@@ -39,10 +39,18 @@ public sealed class AdlTelemetrySource : ITelemetrySource
             return result;
         }
 
+        var adapters = ctx.EnumerateAdapters().ToList();
+        if (adapters.Count == 0) log?.Invoke("ADL: driver reports no adapters.");
         var seenBus = new HashSet<string>();
-        foreach (var a in ctx.EnumerateAdapters())
+        var failures = new List<string>();
+        // Present adapters first; ADL lists one entry per display output of the same GPU.
+        foreach (var a in adapters.OrderByDescending(x => x.Present))
         {
-            if (a.VendorId != AmdVendorId || !a.Present) continue;
+            if (!IsAmd(a.VendorId, a.Name))
+            {
+                failures.Add($"#{a.Index} '{a.Name}' skipped (vendor id {a.VendorId})");
+                continue;
+            }
             var busKey = $"{a.Bus}|{a.Pnp}";
             if (seenBus.Contains(busKey)) continue;
 
@@ -50,18 +58,26 @@ public sealed class AdlTelemetrySource : ITelemetrySource
                 new GpuInfo(GpuVendor.Amd, a.Name.Trim(), $"amd-bus{a.Bus}-{Sanitize(a.Name)}", "AMD ADL", a.Bus));
             try
             {
-                // ADL reports one adapter entry per display output; only some of them answer PMLog queries.
-                if (!src.TryQuery()) { src.Dispose(); continue; }
+                // Only some of the per-output entries answer PMLog queries.
+                int rc = src.Query();
+                if (rc != ADL_OK)
+                {
+                    failures.Add($"#{a.Index} '{a.Name}' bus {a.Bus}: PMLog query returned {rc}");
+                    src.Dispose();
+                    continue;
+                }
             }
             catch (Exception e)
             {
-                log?.Invoke($"ADL PMLog query failed for {a.Name}: {e.Message}");
+                failures.Add($"#{a.Index} '{a.Name}': PMLog query threw {e.GetType().Name}: {e.Message}");
                 src.Dispose();
                 continue;
             }
             seenBus.Add(busKey);
             result.Add(src);
         }
+        if (result.Count == 0)
+            foreach (var f in failures.Distinct().Take(12)) log?.Invoke("ADL: " + f);
         ctx.Release(); // discovery's own reference; each source holds one
         return result;
     }
@@ -69,11 +85,18 @@ public sealed class AdlTelemetrySource : ITelemetrySource
     private static string Sanitize(string s) =>
         new string(s.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray()).Trim('-');
 
-    private bool TryQuery()
+    /// <summary>ADL's vendor id is documented as 0x1002 but some drivers report the decimal value 1002.</summary>
+    internal static bool IsAmd(int vendorId, string name) =>
+        vendorId is AmdVendorId or 1002 ||
+        name.Contains("Radeon", StringComparison.OrdinalIgnoreCase) || name.StartsWith("AMD", StringComparison.OrdinalIgnoreCase);
+
+    private int Query()
     {
         for (int i = 0; i < PmLogOutputSize; i += 4) Marshal.WriteInt32(_buffer, i, 0);
-        return ADL2_New_QueryPMLogData_Get(_ctx.Handle, _adapterIndex, _buffer) == ADL_OK;
+        return ADL2_New_QueryPMLogData_Get(_ctx.Handle, _adapterIndex, _buffer);
     }
+
+    private bool TryQuery() => Query() == ADL_OK;
 
     private Dictionary<int, int> QueryAll()
     {

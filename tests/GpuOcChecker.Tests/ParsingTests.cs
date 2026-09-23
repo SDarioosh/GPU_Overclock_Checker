@@ -32,6 +32,14 @@ public class ParsingTests
     public void Card_profiles_prefer_longest_match(string name, string expected) =>
         Assert.Equal(expected, CardProfiles.Find(name).Name);
 
+    [Theory]
+    [InlineData(0x1002, "AMD Radeon RX 7900 XTX", true)]
+    [InlineData(1002, "AMD Radeon RX 7900 XTX", true)] // decimal vendor id as reported by some drivers
+    [InlineData(0, "AMD Radeon RX 7900 XTX", true)]
+    [InlineData(0x10DE, "NVIDIA GeForce RTX 4090", false)]
+    public void Adl_accepts_amd_adapters(int vendor, string name, bool expected) =>
+        Assert.Equal(expected, GpuOcChecker.Core.Telemetry.Amd.AdlTelemetrySource.IsAmd(vendor, name));
+
     [Fact]
     public void Discrete_gpu_ranks_above_igpu()
     {

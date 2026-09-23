@@ -27,9 +27,13 @@ public sealed class NvmlTelemetrySource : ITelemetrySource
         {
             if (!AddInitRef()) return result;
         }
-        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)
+        catch (DllNotFoundException)
         {
-            log?.Invoke($"NVML not available: {e.Message}");
+            return result; // no NVIDIA driver installed: expected on AMD/Intel systems
+        }
+        catch (EntryPointNotFoundException e)
+        {
+            log?.Invoke($"NVML not usable: {e.Message}");
             return result;
         }
 

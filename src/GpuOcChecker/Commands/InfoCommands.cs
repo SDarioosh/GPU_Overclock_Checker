@@ -24,6 +24,8 @@ public static class InfoCommands
         }
         if (sources.Length == 0) t.AddRow("-", "[yellow]none found[/]", "", "");
         AnsiConsole.Write(t);
+        if (sources.Length == 0)
+            foreach (var n in hw.Notes) AnsiConsole.MarkupLine($"[grey]  {Markup.Escape(n)}[/]");
 
         var c = new Table().Border(TableBorder.Rounded).Title("OpenCL devices for the stress tests (--cl-device)");
         c.AddColumns("#", "Device", "Platform", "Type", "Memory", "CUs");

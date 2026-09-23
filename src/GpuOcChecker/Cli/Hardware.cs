@@ -30,7 +30,7 @@ public sealed class Hardware : IDisposable
             return h;
         }
 
-        var notes = new List<string>();
+        var notes = h.Notes;
         h._all.AddRange(TelemetryDiscovery.Discover(notes.Add));
         if (h._all.Count == 0)
         {
@@ -38,6 +38,7 @@ public sealed class Hardware : IDisposable
             {
                 AnsiConsole.MarkupLine("[yellow]No GPU telemetry found (AMD ADL / NVIDIA NVML).[/] Tests still detect errors, but causes can't be attributed.");
                 foreach (var n in notes) AnsiConsole.MarkupLine($"[grey]  {Markup.Escape(n)}[/]");
+                AnsiConsole.MarkupLine("[grey]  If this is an AMD/NVIDIA card with a current driver, run 'GpuOcChecker list' and report its output.[/]");
             }
             return h;
         }
@@ -50,6 +51,9 @@ public sealed class Hardware : IDisposable
     }
 
     public IReadOnlyList<ITelemetrySource> All => _all;
+
+    /// <summary>Discovery diagnostics (why a backend or adapter was not used).</summary>
+    public List<string> Notes { get; } = new();
 
     public IStressBackend CreateBackend(Options o, StressSetup setup)
     {
